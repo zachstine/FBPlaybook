@@ -1,3 +1,12 @@
+Heck yes—we can do live formation rendering as you type. I put together a **zero-dependency** version (still just React from a CDN, **no JSX**) that:
+
+* watches the textbox in real time
+* parses simple formation cues (e.g., `trips right`, `trips left`, `2x2`)
+* draws a quick **SVG field** and drops players in formation
+
+Paste this whole file over your current `index.html` and open it. Then type “trips right” (or left / 2x2) to see it update instantly.
+
+```html
 <!doctype html>
 <html lang="en">
   <head>
@@ -6,7 +15,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Playbook (No JSX / No Babel)</title>
+    <title>Playbook — Live Formation Preview (No JSX)</title>
     <style>
       :root {
         --bg: #0f0f12;
@@ -16,6 +25,10 @@
         --accent: #6ea8fe;
         --border: #24262c;
         --shadow: 0 8px 30px rgba(0,0,0,0.35);
+        --field: #0e3a1e;
+        --field-lines: #cfe9d3;
+        --player: #e9e9ee;
+        --player-label: #0f0f12;
       }
       * { box-sizing: border-box; }
       html, body { height: 100%; }
@@ -66,37 +79,42 @@
         display: flex; align-items: center; justify-content: space-between;
       }
       .muted { color: var(--muted); font-size: 12px; }
-      .plays-box { height: 420px; overflow: auto; }
-      .play-card {
-        background: #0f1116;
-        border: 1px solid var(--border);
-        border-radius: 16px;
-      }
-      .play-card .h {
-        padding: 12px 14px; border-bottom: 1px solid var(--border);
-        display: flex; justify-content: space-between; align-items: center;
-      }
-      .play-card .name { font-size: 14px; font-weight: 600; max-width: 16rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-      .play-card .meta { color: var(--muted); font-size: 11px; }
-      .play-card .content { padding: 14px; }
-      .preview {
-        border: 2px dashed #2a2d36; height: 128px; border-radius: 12px;
-        display: grid; place-items: center; color: var(--muted); font-size: 12px; margin-bottom: 10px;
-      }
-      textarea, input[type="text"] {
+
+      .plays-box { max-height: 420px; overflow: auto; }
+      textarea {
         width: 100%; padding: 12px 14px; border-radius: 12px;
         border: 1px solid var(--border); background: #0f1116; color: var(--text);
         outline: none;
       }
-      textarea:focus, input[type="text"]:focus { border-color: #2b3342; }
+      textarea:focus { border-color: #2b3342; }
       .kbd {
         border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; font-size: 12px;
       }
-      .empty {
-        height: 100%; display: grid; place-items: center; color: var(--muted);
+
+      /* Field */
+      .field-wrap {
+        background: #0c1014;
+        border-radius: 16px;
+        padding: 8px;
+        border: 1px solid var(--border);
       }
-      .actions { display: flex; gap: 8px; align-items: center; }
-      .right { margin-left: auto; }
+      .field {
+        width: 100%;
+        height: auto;
+        background: var(--field);
+        border-radius: 12px;
+        display: block;
+      }
+      .caption { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
+      .pill {
+        display:inline-flex; align-items:center; gap:8px;
+        background:#0f1116; border:1px solid var(--border); color:var(--text);
+        font-size:12px; padding:6px 10px; border-radius:999px;
+      }
+      .legend { display:flex; gap:8px; flex-wrap:wrap; }
+      .badge {
+        font-size: 11px; padding: 4px 8px; border-radius: 999px; border:1px solid var(--border); background:#0f1116; color:var(--text);
+      }
     </style>
   </head>
   <body>
@@ -117,12 +135,148 @@
       import React from "https://esm.sh/react@18";
       import { createRoot } from "https://esm.sh/react-dom@18/client";
 
-      const { useState, useRef, useMemo, createElement: h } = React;
+      const { useState, useRef, useMemo, useEffect, createElement: h } = React;
 
+      /** ------- Formation Parsing (very simple to start) ------- */
+      const FORMATIONS = {
+        TRIPS_RIGHT: "Trips Right",
+        TRIPS_LEFT: "Trips Left",
+        DOUBLES_2x2: "2x2 (Doubles)",
+        BASE: "Base 11 (Balanced)"
+      };
+
+      function parseFormation(text) {
+        const s = (text || "").toLowerCase();
+        if (/\btrips\s+right\b/.test(s)) return FORMATIONS.TRIPS_RIGHT;
+        if (/\btrips\s+left\b/.test(s))  return FORMATIONS.TRIPS_LEFT;
+        if (/\b2x2\b/.test(s) || /\bdoubles\b/.test(s)) return FORMATIONS.DOUBLES_2x2;
+        return FORMATIONS.BASE;
+      }
+
+      /** ------- Layout Engine (toy coordinates for demo) ------- */
+      // SVG coord system
+      const W = 900;             // field width
+      const H = 520;             // field height
+      const LOS_Y = 260;         // line of scrimmage y
+      const WR_Y = LOS_Y - 10;   // WR on line of scrimmage
+      const TE_Y = LOS_Y - 10;
+      const OL_Y = LOS_Y - 12;   // O-line just above LOS
+      const QB_Y = LOS_Y + 36;   // QB in backfield
+      const RB_Y = LOS_Y + 22;   // RB depth
+      const SLOT_Y = LOS_Y - 10;
+
+      function playersForFormation(name) {
+        // 11 personnel (QB, RB, TE, X, Y, Z, plus 5 OL). Simplified for demo.
+        // X = left wide, Z = right wide, Y = slot/TE (varies).
+        const OL = [
+          { id: "LT", x: W*0.36, y: OL_Y }, { id: "LG", x: W*0.40, y: OL_Y },
+          { id: "C",  x: W*0.44, y: OL_Y }, { id: "RG", x: W*0.48, y: OL_Y },
+          { id: "RT", x: W*0.52, y: OL_Y }
+        ];
+        const QB = { id: "QB", x: W*0.44, y: QB_Y };
+        const RB = { id: "RB", x: W*0.50, y: RB_Y };
+
+        if (name === FORMATIONS.TRIPS_RIGHT) {
+          return [
+            ...OL, QB, RB,
+            { id: "X",  x: W*0.20, y: WR_Y },            // iso left
+            { id: "Z",  x: W*0.72, y: WR_Y },            // wide right
+            { id: "Y",  x: W*0.64, y: SLOT_Y },          // slot right
+            { id: "H",  x: W*0.56, y: SLOT_Y },          // 3rd WR right (H)
+            { id: "TE", x: W*0.36, y: TE_Y }             // inline left
+          ];
+        }
+
+        if (name === FORMATIONS.TRIPS_LEFT) {
+          return [
+            ...OL, QB, RB,
+            { id: "Z",  x: W*0.68, y: WR_Y },            // iso right
+            { id: "X",  x: W*0.24, y: WR_Y },            // wide left
+            { id: "Y",  x: W*0.32, y: SLOT_Y },          // slot left
+            { id: "H",  x: W*0.40, y: SLOT_Y },          // 3rd WR left
+            { id: "TE", x: W*0.52, y: TE_Y }             // inline right
+          ];
+        }
+
+        if (name === FORMATIONS.DOUBLES_2x2) {
+          return [
+            ...OL, QB, RB,
+            { id: "X",  x: W*0.22, y: WR_Y },            // left wide
+            { id: "Y",  x: W*0.32, y: SLOT_Y },          // left slot
+            { id: "Z",  x: W*0.66, y: WR_Y },            // right wide
+            { id: "H",  x: W*0.56, y: SLOT_Y },          // right slot
+            { id: "TE", x: W*0.36, y: TE_Y }             // inline left (or remove if you want true 10 personnel)
+          ];
+        }
+
+        // Base balanced: X left, Z right, TE right, slot optional (H off)
+        return [
+          ...OL, QB, RB,
+          { id: "X",  x: W*0.22, y: WR_Y },
+          { id: "Z",  x: W*0.68, y: WR_Y },
+          { id: "TE", x: W*0.52, y: TE_Y },
+          { id: "Y",  x: W*0.32, y: SLOT_Y }            // slot left
+        ];
+      }
+
+      function Field({ formationName }) {
+        const players = useMemo(() => playersForFormation(formationName), [formationName]);
+
+        // Yard lines every ~10 yards (stylized)
+        const lines = [];
+        for (let i = 0; i <= 10; i++) {
+          const x = (W * i) / 10;
+          lines.push(h("line", {
+            key: "l" + i,
+            x1: x, x2: x, y1: 20, y2: H - 20,
+            stroke: "rgba(255,255,255,0.15)", strokeWidth: 1
+          }));
+        }
+
+        return h("div", { className: "field-wrap" },
+          h("svg", { className: "field", viewBox: `0 0 ${W} ${H}`, width: "100%", height: "auto" },
+            // field bg
+            h("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#g)" }),
+            h("defs", null,
+              h("linearGradient", { id: "g", x1: 0, y1: 0, x2: 0, y2: 1 },
+                h("stop", { offset: "0%", stopColor: "#0d4a26" }),
+                h("stop", { offset: "100%", stopColor: "#0c381e" })
+              )
+            ),
+            // yard lines
+            ...lines,
+            // sidelines
+            h("rect", { x: 4, y: 4, width: W - 8, height: H - 8, fill: "none", stroke: "rgba(255,255,255,0.25)", strokeWidth: 2, rx: 10 }),
+            // LOS
+            h("line", { x1: 20, x2: W - 20, y1: LOS_Y, y2: LOS_Y, stroke: "#ffe28a", strokeWidth: 2 }),
+            // players
+            ...players.map(p =>
+              h("g", { key: p.id },
+                h("circle", { cx: p.x, cy: p.y, r: 12, fill: "#e9e9ee" }),
+                h("text", {
+                  x: p.x, y: p.y + 4, textAnchor: "middle",
+                  fill: "#0f0f12", fontWeight: 700, fontSize: 10
+                }, p.id)
+              )
+            )
+          ),
+          h("div", { className: "caption" },
+            h("div", { className: "pill" }, "Formation: ", h("strong", null, " ", formationName)),
+            h("div", { className: "legend" },
+              h("span", { className: "badge" }, "LOS = yellow line"),
+              h("span", { className: "badge" }, "Drag to select text; diagram static (for now)")
+            )
+          )
+        );
+      }
+
+      /** ---------------- App ---------------- */
       function PlaybookHome() {
-        const [plays, setPlays] = useState([]);
+        const [plays, setPlays] = useState([]);  // not used yet, keeping from earlier
         const [callText, setCallText] = useState("");
         const inputRef = useRef(null);
+
+        const formationName = useMemo(() => parseFormation(callText), [callText]);
 
         function addPlayFromCall() {
           const raw = callText.trim();
@@ -139,61 +293,22 @@
           return tokens.length ? tokens.slice(0, 3).join(" ") : (raw.slice(0, 20) || "Untitled Play");
         }
 
-        function removePlay(id) {
-          setPlays(p => p.filter(x => x.id !== id));
-        }
-
-        const emptyState = useMemo(() =>
-          h("div", { className: "empty" },
-            h("div", { style: { textAlign: "center" } },
-              h("div", { style: { marginBottom: 8 } }, "▶"),
-              h("div", null, "No plays yet"),
-              h("div", { className: "muted" }, "Enter a play call below to add your first play.")
-            )
-          )
-        , []);
-
-        // Plays grid
-        const playsGrid = plays.length === 0
-          ? h("div", { className: "card", style: { height: "100%", border: "1px dashed #2a2d36", background: "none" } }, emptyState)
-          : h("div", { className: "grid", style: { gridTemplateColumns: "repeat(12,1fr)" } },
-              ...plays.map(play =>
-                h("div", { className: "col-12 col-sm-6 col-sm-4", key: play.id },
-                  h("div", { className: "play-card" },
-                    h("div", { className: "h" },
-                      h("div", null,
-                        h("div", { className: "name", title: play.name }, play.name),
-                        h("div", { className: "meta" }, new Date(play.createdAt).toLocaleString())
-                      ),
-                      h("button", { className: "btn", onClick: () => removePlay(play.id), title: "Delete" }, "Delete")
-                    ),
-                    h("div", { className: "content" },
-                      h("div", { className: "preview" }, "Diagram preview"),
-                      h("div", { style: {
-                        font: "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
-                        color: "#cbd3ff",
-                        whiteSpace: "pre-wrap",
-                        wordBreak: "break-word"
-                      }}, play.call)
-                    )
-                  )
-                )
-              )
-            );
-
         return h("div", { className: "container", style: { paddingTop: "18px", paddingBottom: "32px" } },
-          // Plays Box
           h("div", { className: "grid" },
+            // Formation Live Preview
             h("div", { className: "col-12" },
               h("div", { className: "card" },
                 h("div", { className: "header" },
-                  h("div", { style: { fontWeight: 600 } }, "Plays"),
-                  h("div", { className: "muted" }, `${plays.length} ${plays.length === 1 ? "play" : "plays"}`)
+                  h("div", { style: { fontWeight: 600 } }, "Live Formation Preview"),
+                  h("div", { className: "muted" }, "Type in the box below: “trips right”, “trips left”, or “2x2”")
                 ),
-                h("div", { className: "body plays-box" }, playsGrid)
+                h("div", { className: "body" },
+                  h(Field, { formationName })
+                )
               )
             ),
-            // Input Box
+
+            // Play Call Input
             h("div", { className: "col-12" },
               h("div", { className: "card" },
                 h("div", { className: "body" },
@@ -203,8 +318,8 @@
                     ref: inputRef,
                     value: callText,
                     onChange: e => setCallText(e.target.value),
-                    placeholder: "e.g., Trips Right 2x2 — X Post, Y Go, Z In, RB Swing, TE 5yd Sit",
-                    rows: 4,
+                    placeholder: "Try: Trips Right   or   Trips Left   or   2x2 (Doubles)",
+                    rows: 3,
                     onKeyDown: e => {
                       if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
                         e.preventDefault();
@@ -218,11 +333,11 @@
                       h("span", { className: "kbd" }, "Ctrl/⌘"),
                       "+",
                       h("span", { className: "kbd" }, "Enter"),
-                      " to add quickly"
+                      " to save as a play"
                     ),
                     h("div", { className: "actions" },
                       h("button", { className: "btn", onClick: () => setCallText("") }, "Clear"),
-                      h("button", { className: "btn primary", onClick: addPlayFromCall }, "Add to Plays")
+                      h("button", { className: "btn primary", onClick: addPlayFromCall }, "Save Play")
                     )
                   )
                 )
@@ -236,3 +351,21 @@
     </script>
   </body>
 </html>
+```
+
+### What you can type right now
+
+* `trips right`
+* `trips left`
+* `2x2` or `doubles`
+* (anything else defaults to a balanced base look)
+
+### Next up (I can wire any of these immediately)
+
+* Add more formations (`bunch`, `empty`, `i right/left`, `pistol`, `trio`, `trey`, etc.)
+* Show **routes** as you add “X post, Y go, Z in, RB swing, TE sit” (simple path parser → SVG polylines).
+* Small route knobs: depth numbers like `post 12`, `in 5`.
+* A toggle to flip field direction (left/right hash).
+* Save the parsed formation + routes into your `plays` list (ready for Dexie later).
+
+Tell me which formation set you want expanded first (bunch/empty/pistol?), and I’ll add them + quick route shapes so you can start “drawing” by typing.
