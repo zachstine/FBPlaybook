@@ -1,371 +1,400 @@
-Heck yes—we can do live formation rendering as you type. I put together a **zero-dependency** version (still just React from a CDN, **no JSX**) that:
-
-* watches the textbox in real time
-* parses simple formation cues (e.g., `trips right`, `trips left`, `2x2`)
-* draws a quick **SVG field** and drops players in formation
-
-Paste this whole file over your current `index.html` and open it. Then type “trips right” (or left / 2x2) to see it update instantly.
-
-```html
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <title>Playbook — Live Formation Preview (No JSX)</title>
-    <style>
-      :root {
-        --bg: #0f0f12;
-        --card: #15161a;
-        --muted: #8b8d93;
-        --text: #e9e9ee;
-        --accent: #6ea8fe;
-        --border: #24262c;
-        --shadow: 0 8px 30px rgba(0,0,0,0.35);
-        --field: #0e3a1e;
-        --field-lines: #cfe9d3;
-        --player: #e9e9ee;
-        --player-label: #0f0f12;
-      }
-      * { box-sizing: border-box; }
-      html, body { height: 100%; }
-      body {
-        margin: 0;
-        font-family: system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji";
-        background: radial-gradient(1200px 800px at 80% -100px, #1b1e27, transparent), var(--bg);
-        color: var(--text);
-      }
-      header {
-        position: sticky; top: 0; z-index: 10;
-        border-bottom: 1px solid var(--border);
-        background: rgba(15,15,18,0.7);
-        backdrop-filter: blur(8px);
-      }
-      .container { max-width: 1100px; margin: 0 auto; padding: 16px; }
-      .title { font-size: 20px; font-weight: 700; }
-      .row { display: flex; gap: 8px; align-items: center; }
-      .btn {
-        background: var(--card);
-        color: var(--text);
-        border: 1px solid var(--border);
-        padding: 8px 12px;
-        border-radius: 12px;
-        cursor: pointer;
-      }
-      .btn.primary {
-        background: var(--accent);
-        color: #0b1220;
-        border-color: transparent;
-      }
-      .grid { display: grid; gap: 14px; grid-template-columns: repeat(12, 1fr); }
-      .col-12 { grid-column: span 12; }
-      @media (min-width: 640px) {
-        .col-sm-6 { grid-column: span 6; }
-        .col-sm-4 { grid-column: span 4; }
-      }
-      .card {
-        background: var(--card);
-        border: 1px solid var(--border);
-        border-radius: 20px;
-        box-shadow: var(--shadow);
-      }
-      .card .body { padding: 16px; }
-      .card .header {
-        padding: 16px;
-        border-bottom: 1px solid var(--border);
-        display: flex; align-items: center; justify-content: space-between;
-      }
-      .muted { color: var(--muted); font-size: 12px; }
-
-      .plays-box { max-height: 420px; overflow: auto; }
-      textarea {
-        width: 100%; padding: 12px 14px; border-radius: 12px;
-        border: 1px solid var(--border); background: #0f1116; color: var(--text);
-        outline: none;
-      }
-      textarea:focus { border-color: #2b3342; }
-      .kbd {
-        border: 1px solid var(--border); border-radius: 6px; padding: 0 6px; font-size: 12px;
-      }
-
-      /* Field */
-      .field-wrap {
-        background: #0c1014;
-        border-radius: 16px;
-        padding: 8px;
-        border: 1px solid var(--border);
-      }
-      .field {
-        width: 100%;
-        height: auto;
-        background: var(--field);
-        border-radius: 12px;
-        display: block;
-      }
-      .caption { display:flex; justify-content:space-between; align-items:center; margin-top:8px; }
-      .pill {
-        display:inline-flex; align-items:center; gap:8px;
-        background:#0f1116; border:1px solid var(--border); color:var(--text);
-        font-size:12px; padding:6px 10px; border-radius:999px;
-      }
-      .legend { display:flex; gap:8px; flex-wrap:wrap; }
-      .badge {
-        font-size: 11px; padding: 4px 8px; border-radius: 999px; border:1px solid var(--border); background:#0f1116; color:var(--text);
-      }
-    </style>
-  </head>
-  <body>
-    <header>
-      <div class="container row">
-        <div class="title">Playbook</div>
-        <div class="row right">
-          <button class="btn">Import</button>
-          <button class="btn primary">New Play</button>
-        </div>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Playbook — Live Formations + Routes (No JSX)</title>
+  <style>
+    :root {
+      --bg: #0f0f12; --card:#15161a; --muted:#8b8d93; --text:#e9e9ee; --accent:#6ea8fe;
+      --border:#24262c; --shadow:0 8px 30px rgba(0,0,0,0.35);
+      --field:#0e3a1e; --player:#e9e9ee; --label:#0f0f12; --route:#fbd38d;
+    }
+    *{box-sizing:border-box} html,body{height:100%}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:radial-gradient(1200px 800px at 80% -100px,#1b1e27,transparent),var(--bg); color:var(--text)}
+    header{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);background:rgba(15,15,18,.7);backdrop-filter:blur(8px)}
+    .container{max-width:1100px;margin:0 auto;padding:16px}
+    .title{font-size:20px;font-weight:700}
+    .row{display:flex;gap:8px;align-items:center}.right{margin-left:auto}
+    .btn{background:var(--card);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:12px;cursor:pointer}
+    .btn.primary{background:var(--accent);color:#0b1220;border-color:transparent}
+    .grid{display:grid;gap:14px;grid-template-columns:repeat(12,1fr)} .col-12{grid-column:span 12}
+    @media(min-width:640px){.col-sm-6{grid-column:span 6}.col-sm-4{grid-column:span 4}}
+    .card{background:var(--card);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow)}
+    .card .body{padding:16px}.card .header{padding:16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
+    .muted{color:var(--muted);font-size:12px}
+    textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:#0f1116;color:var(--text);outline:none}
+    textarea:focus{border-color:#2b3342}
+    .kbd{border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px}
+    .legend{display:flex;gap:8px;flex-wrap:wrap}.badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1116;color:var(--text)}
+    /* Field */
+    .field-wrap{background:#0c1014;border-radius:16px;padding:8px;border:1px solid var(--border)}
+    .caption{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+  </style>
+</head>
+<body>
+  <header>
+    <div class="container row">
+      <div class="title">Playbook</div>
+      <div class="row right">
+        <button class="btn">Import</button>
+        <button class="btn primary">New Play</button>
       </div>
-    </header>
+    </div>
+  </header>
 
-    <div id="root"></div>
+  <div id="root"></div>
 
-    <!-- React (ESM, no JSX) -->
-    <script type="module">
-      import React from "https://esm.sh/react@18";
-      import { createRoot } from "https://esm.sh/react-dom@18/client";
+  <script type="module">
+    import React from "https://esm.sh/react@18";
+    import { createRoot } from "https://esm.sh/react-dom@18/client";
+    const { useState, useRef, useMemo, createElement: h } = React;
 
-      const { useState, useRef, useMemo, useEffect, createElement: h } = React;
+    /** ----------------- Parse formation + routes ----------------- */
+    const FORM = {
+      TRIPS_R: "Trips Right", TRIPS_L: "Trips Left",
+      DOUBLES: "2x2 (Doubles)",
+      BUNCH_R: "Bunch Right", BUNCH_L: "Bunch Left",
+      EMPTY: "Empty",
+      PISTOL: "Pistol",
+      I_R: "I Right", I_L: "I Left",
+      BASE: "Base 11 (Balanced)"
+    };
 
-      /** ------- Formation Parsing (very simple to start) ------- */
-      const FORMATIONS = {
-        TRIPS_RIGHT: "Trips Right",
-        TRIPS_LEFT: "Trips Left",
-        DOUBLES_2x2: "2x2 (Doubles)",
-        BASE: "Base 11 (Balanced)"
+    function parseFormation(text) {
+      const s = (text || "").toLowerCase();
+      if (/\bbunch\s+right\b/.test(s)) return FORM.BUNCH_R;
+      if (/\bbunch\s+left\b/.test(s))  return FORM.BUNCH_L;
+      if (/\bempty\b/.test(s))         return FORM.EMPTY;
+      if (/\bpistol\b/.test(s))        return FORM.PISTOL;
+      if (/\bi\s+right\b/.test(s))     return FORM.I_R;
+      if (/\bi\s+left\b/.test(s))      return FORM.I_L;
+      if (/\btrips\s+right\b/.test(s)) return FORM.TRIPS_R;
+      if (/\btrips\s+left\b/.test(s))  return FORM.TRIPS_L;
+      if (/\b2x2\b/.test(s) || /\bdoubles\b/.test(s)) return FORM.DOUBLES;
+      return FORM.BASE;
+    }
+
+    // Routes: "X post 12, Y go, Z in 5, RB swing, TE sit 5, H corner 10"
+    function parseRoutes(text) {
+      const m = {};
+      if (!text) return m;
+      const normalized = text.toLowerCase().replace(/—/g, "-");
+      // split on commas
+      normalized.split(",").forEach(chunk => {
+        const c = chunk.trim();
+        // match: id route depth?
+        const re = /\b(x|y|z|h|rb|te)\s+([a-z]+)\s*(\d+)?/i;
+        const k = c.match(re);
+        if (!k) return;
+        const id = k[1].toUpperCase();
+        const type = routeAlias(k[2]);
+        const depth = k[3] ? parseInt(k[3], 10) : defaultDepth(type);
+        m[id] = { type, depth };
+      });
+      return m;
+    }
+
+    function routeAlias(word) {
+      const w = word.toLowerCase();
+      const map = {
+        go: "go", fly: "go", seam: "seam",
+        post: "post", corner: "corner",
+        in: "in", dig: "in",
+        out: "out", speedout: "out",
+        slant: "slant", drag: "drag", cross: "drag",
+        curl: "curl", comeback: "comeback", hitch: "hitch", stop: "hitch",
+        wheel: "wheel", swing: "swing", flat: "flat",
+        sit: "sit"
       };
+      return map[w] || "go";
+    }
+    function defaultDepth(type) {
+      const d = { go: 30, seam: 25, post: 18, corner: 18, in: 12, out: 12, slant: 6, drag: 5,
+                  curl: 12, comeback: 14, hitch: 6, wheel: 20, swing: 3, flat: 3, sit: 6 };
+      return d[type] || 12;
+    }
 
-      function parseFormation(text) {
-        const s = (text || "").toLowerCase();
-        if (/\btrips\s+right\b/.test(s)) return FORMATIONS.TRIPS_RIGHT;
-        if (/\btrips\s+left\b/.test(s))  return FORMATIONS.TRIPS_LEFT;
-        if (/\b2x2\b/.test(s) || /\bdoubles\b/.test(s)) return FORMATIONS.DOUBLES_2x2;
-        return FORMATIONS.BASE;
+    /** ----------------- Field + positions ----------------- */
+    const W = 900, H = 520;
+    const LOS_Y = 260, WR_Y = LOS_Y - 10, TE_Y = LOS_Y - 10, OL_Y = LOS_Y - 12, QB_Y = LOS_Y + 36, RB_Y = LOS_Y + 22;
+    const YPX = 6; // pixels per yard (rough)
+
+    function playersForFormation(name) {
+      // Base 11 personnel: QB, RB, TE, X/Z outside, Y/H slots + 5 OL
+      const OL = [
+        { id: "LT", x: W*0.36, y: OL_Y }, { id: "LG", x: W*0.40, y: OL_Y },
+        { id: "C",  x: W*0.44, y: OL_Y }, { id: "RG", x: W*0.48, y: OL_Y },
+        { id: "RT", x: W*0.52, y: OL_Y }
+      ];
+      const QB = { id: "QB", x: W*0.44, y: QB_Y };
+      const RB = { id: "RB", x: W*0.50, y: RB_Y };
+
+      switch (name) {
+        case FORM.TRIPS_R:
+          return [...OL, QB, RB,
+            { id:"X", x: W*0.20, y: WR_Y },
+            { id:"Z", x: W*0.72, y: WR_Y },
+            { id:"Y", x: W*0.64, y: WR_Y },
+            { id:"H", x: W*0.56, y: WR_Y },
+            { id:"TE",x: W*0.36, y: TE_Y }
+          ];
+        case FORM.TRIPS_L:
+          return [...OL, QB, RB,
+            { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"X", x: W*0.24, y: WR_Y },
+            { id:"Y", x: W*0.32, y: WR_Y },
+            { id:"H", x: W*0.40, y: WR_Y },
+            { id:"TE",x: W*0.52, y: TE_Y }
+          ];
+        case FORM.DOUBLES: // 2x2
+          return [...OL, QB, RB,
+            { id:"X", x: W*0.22, y: WR_Y }, { id:"Y", x: W*0.32, y: WR_Y },
+            { id:"Z", x: W*0.66, y: WR_Y }, { id:"H", x: W*0.56, y: WR_Y },
+            { id:"TE",x: W*0.36, y: TE_Y }
+          ];
+        case FORM.BUNCH_R:
+          return [...OL, QB, RB,
+            { id:"X", x: W*0.22, y: WR_Y },
+            // bunch cluster right
+            { id:"Z", x: W*0.62, y: WR_Y },
+            { id:"Y", x: W*0.58, y: WR_Y + 8 },
+            { id:"H", x: W*0.56, y: WR_Y - 8 },
+            { id:"TE",x: W*0.36, y: TE_Y }
+          ];
+        case FORM.BUNCH_L:
+          return [...OL, QB, RB,
+            { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"X", x: W*0.28, y: WR_Y },
+            { id:"Y", x: W*0.42, y: WR_Y + 8 },
+            { id:"H", x: W*0.40, y: WR_Y - 8 },
+            { id:"TE",x: W*0.52, y: TE_Y }
+          ];
+        case FORM.EMPTY:
+          return [...OL, { ...QB, y: LOS_Y + 26 }, // shallower “gun”
+            // 5 wide
+            { id:"X", x: W*0.20, y: WR_Y },
+            { id:"Y", x: W*0.34, y: WR_Y },
+            { id:"TE",x: W*0.44, y: WR_Y + 2 },
+            { id:"H", x: W*0.54, y: WR_Y },
+            { id:"Z", x: W*0.70, y: WR_Y }
+          ];
+        case FORM.PISTOL:
+          return [...OL, { ...QB, y: LOS_Y + 30 }, { ...RB, x: W*0.44, y: LOS_Y + 58 },
+            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"TE",x: W*0.52, y: TE_Y }, { id:"Y", x: W*0.32, y: WR_Y }
+          ];
+        case FORM.I_R:
+          return [...OL, { ...QB, y: LOS_Y + 24 },
+            { id: "FB", x: W*0.44, y: LOS_Y + 44 },
+            { id: "RB", x: W*0.44, y: LOS_Y + 64 },
+            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"TE",x: W*0.52, y: TE_Y }
+          ];
+        case FORM.I_L:
+          return [...OL, { ...QB, y: LOS_Y + 24 },
+            { id: "FB", x: W*0.44, y: LOS_Y + 44 },
+            { id: "RB", x: W*0.44, y: LOS_Y + 64 },
+            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"TE",x: W*0.36, y: TE_Y }
+          ];
+        default:
+          return [...OL, QB, RB,
+            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
+            { id:"TE",x: W*0.52, y: TE_Y }, { id:"Y", x: W*0.32, y: WR_Y }
+          ];
+      }
+    }
+
+    /** ----------------- Route geometry ----------------- */
+    // Basic shapes: go, post, corner, in, out, slant, drag, curl, comeback, hitch, wheel, swing, flat, seam, sit
+    function routePoints(start, type, depth) {
+      // y decreases going downfield
+      const up = -depth * YPX;
+      const stem = -Math.min(depth, 8) * YPX; // short stem for breaks
+      const pts = [[start.x, start.y]];
+
+      switch (type) {
+        case "go":
+        case "seam":
+          pts.push([start.x, start.y + up]);
+          break;
+        case "post": {
+          const midX = (W * 0.44); // towards middle of field (hash area)
+          pts.push([start.x, start.y + stem]);
+          pts.push([lerp(start.x, midX, 0.8), start.y + up]);
+          break;
+        }
+        case "corner": {
+          const sideline = start.x < W/2 ? 20 : W - 20;
+          pts.push([start.x, start.y + stem]);
+          pts.push([lerp(start.x, sideline, 0.8), start.y + up]);
+          break;
+        }
+        case "in":
+          pts.push([start.x, start.y + stem]);
+          pts.push([start.x + (start.x < W/2 ? 1 : -1) * 120, start.y + stem]); // break across
+          break;
+        case "out":
+          pts.push([start.x, start.y + stem]);
+          pts.push([start.x + (start.x < W/2 ? -1 : 1) * 120, start.y + stem]);
+          break;
+        case "slant":
+          pts.push([start.x + (start.x < W/2 ? 70 : -70), start.y - 70]);
+          break;
+        case "drag":
+          pts.push([start.x, start.y + stem * 0.4]);
+          pts.push([start.x + (start.x < W/2 ? 160 : -160), start.y + stem * 0.4]);
+          break;
+        case "curl":
+          pts.push([start.x, start.y + up]);
+          pts.push([start.x, start.y + up + 36]); // come back a bit
+          break;
+        case "comeback":
+          pts.push([start.x, start.y + up]);
+          pts.push([start.x + (start.x < W/2 ? -40 : 40), start.y + up + 48]);
+          break;
+        case "hitch":
+        case "sit":
+          pts.push([start.x, start.y + up * 0.3]);
+          break;
+        case "wheel": {
+          const flatX = start.x + (start.x < W/2 ? -140 : 140);
+          pts.push([flatX, start.y + 10]);  // flat to sideline
+          pts.push([flatX, start.y + up]);  // turn up
+          break;
+        }
+        case "swing":
+        case "flat": {
+          const dx = (start.x < W/2 ? -140 : 140);
+          pts.push([start.x + dx, start.y + 12]);
+          break;
+        }
+        default:
+          pts.push([start.x, start.y + up]);
+      }
+      return pts;
+    }
+
+    function lerp(a,b,t){ return a + (b-a)*t; }
+
+    /** ----------------- Components ----------------- */
+    function Field({ formationName, routesMap }) {
+      const players = useMemo(() => playersForFormation(formationName), [formationName]);
+
+      const yardLines = [];
+      for (let i = 0; i <= 10; i++) {
+        const x = (W * i) / 10;
+        yardLines.push(h("line", { key: "yl"+i, x1:x, x2:x, y1:20, y2:H-20, stroke:"rgba(255,255,255,.15)", strokeWidth:1 }));
       }
 
-      /** ------- Layout Engine (toy coordinates for demo) ------- */
-      // SVG coord system
-      const W = 900;             // field width
-      const H = 520;             // field height
-      const LOS_Y = 260;         // line of scrimmage y
-      const WR_Y = LOS_Y - 10;   // WR on line of scrimmage
-      const TE_Y = LOS_Y - 10;
-      const OL_Y = LOS_Y - 12;   // O-line just above LOS
-      const QB_Y = LOS_Y + 36;   // QB in backfield
-      const RB_Y = LOS_Y + 22;   // RB depth
-      const SLOT_Y = LOS_Y - 10;
+      return h("div", { className: "field-wrap" },
+        h("svg", { viewBox:`0 0 ${W} ${H}`, width:"100%", height:"auto" },
+          // field background
+          h("rect", { x:0, y:0, width:W, height:H, fill:"url(#g)" }),
+          h("defs", null,
+            h("linearGradient", { id:"g", x1:0, y1:0, x2:0, y2:1 },
+              h("stop", { offset:"0%", stopColor:"#0d4a26" }),
+              h("stop", { offset:"100%", stopColor:"#0c381e" })
+            )
+          ),
+          ...yardLines,
+          // sidelines
+          h("rect", { x:4, y:4, width:W-8, height:H-8, fill:"none", stroke:"rgba(255,255,255,.25)", strokeWidth:2, rx:10 }),
+          // LOS
+          h("line", { x1:20, x2:W-20, y1:LOS_Y, y2:LOS_Y, stroke:"#ffe28a", strokeWidth:2 }),
 
-      function playersForFormation(name) {
-        // 11 personnel (QB, RB, TE, X, Y, Z, plus 5 OL). Simplified for demo.
-        // X = left wide, Z = right wide, Y = slot/TE (varies).
-        const OL = [
-          { id: "LT", x: W*0.36, y: OL_Y }, { id: "LG", x: W*0.40, y: OL_Y },
-          { id: "C",  x: W*0.44, y: OL_Y }, { id: "RG", x: W*0.48, y: OL_Y },
-          { id: "RT", x: W*0.52, y: OL_Y }
-        ];
-        const QB = { id: "QB", x: W*0.44, y: QB_Y };
-        const RB = { id: "RB", x: W*0.50, y: RB_Y };
+          // ROUTES first (under player circles)
+          ...players.flatMap(p => {
+            const r = routesMap[p.id];
+            if (!r) return [];
+            const pts = routePoints(p, r.type, r.depth);
+            const d = pts.map(([x,y]) => `${x},${y}`).join(" ");
+            return [
+              h("polyline", { key:`r-${p.id}`, points:d, fill:"none", stroke:varRouteColor(p.id), strokeWidth:4, strokeLinejoin:"round" }),
+              h("circle", { key:`r-dot-${p.id}`, cx:pts[pts.length-1][0], cy:pts[pts.length-1][1], r:3, fill:varRouteColor(p.id) })
+            ];
+          }),
 
-        if (name === FORMATIONS.TRIPS_RIGHT) {
-          return [
-            ...OL, QB, RB,
-            { id: "X",  x: W*0.20, y: WR_Y },            // iso left
-            { id: "Z",  x: W*0.72, y: WR_Y },            // wide right
-            { id: "Y",  x: W*0.64, y: SLOT_Y },          // slot right
-            { id: "H",  x: W*0.56, y: SLOT_Y },          // 3rd WR right (H)
-            { id: "TE", x: W*0.36, y: TE_Y }             // inline left
-          ];
-        }
+          // players
+          ...players.map(p =>
+            h("g", { key:p.id },
+              h("circle", { cx:p.x, cy:p.y, r:12, fill:varPlayerFill(p.id) }),
+              h("text", { x:p.x, y:p.y+4, textAnchor:"middle", fill:varTextFill(p.id), fontWeight:700, fontSize:10 }, p.id)
+            )
+          )
+        ),
+        h("div", { className: "caption" },
+          h("div", null, h("span", { className:"badge" }, "Formation: ", formationName)),
+          h("div", { className:"legend" },
+            h("span", { className:"badge" }, "LOS = yellow"),
+            h("span", { className:"badge" }, "Routes = colored lines")
+          )
+        )
+      );
+    }
 
-        if (name === FORMATIONS.TRIPS_LEFT) {
-          return [
-            ...OL, QB, RB,
-            { id: "Z",  x: W*0.68, y: WR_Y },            // iso right
-            { id: "X",  x: W*0.24, y: WR_Y },            // wide left
-            { id: "Y",  x: W*0.32, y: SLOT_Y },          // slot left
-            { id: "H",  x: W*0.40, y: SLOT_Y },          // 3rd WR left
-            { id: "TE", x: W*0.52, y: TE_Y }             // inline right
-          ];
-        }
+    function varPlayerFill(id){
+      // Color skill guys lighter; OL/QB darker for contrast
+      if (["QB","RB","FB","X","Y","Z","H","TE"].includes(id)) return "#e9e9ee";
+      return "#c7cad1";
+    }
+    function varTextFill(id){
+      return "#0f0f12";
+    }
+    function varRouteColor(id){
+      // deterministic color per id
+      const map = { X:"#60a5fa", Y:"#34d399", Z:"#f472b6", H:"#fbbf24", TE:"#a78bfa", RB:"#f87171", FB:"#22c55e" };
+      return map[id] || "#fbd38d";
+    }
 
-        if (name === FORMATIONS.DOUBLES_2x2) {
-          return [
-            ...OL, QB, RB,
-            { id: "X",  x: W*0.22, y: WR_Y },            // left wide
-            { id: "Y",  x: W*0.32, y: SLOT_Y },          // left slot
-            { id: "Z",  x: W*0.66, y: WR_Y },            // right wide
-            { id: "H",  x: W*0.56, y: SLOT_Y },          // right slot
-            { id: "TE", x: W*0.36, y: TE_Y }             // inline left (or remove if you want true 10 personnel)
-          ];
-        }
+    /** ----------------- App ----------------- */
+    function App(){
+      const [callText, setCallText] = useState("");
 
-        // Base balanced: X left, Z right, TE right, slot optional (H off)
-        return [
-          ...OL, QB, RB,
-          { id: "X",  x: W*0.22, y: WR_Y },
-          { id: "Z",  x: W*0.68, y: WR_Y },
-          { id: "TE", x: W*0.52, y: TE_Y },
-          { id: "Y",  x: W*0.32, y: SLOT_Y }            // slot left
-        ];
-      }
+      const formationName = useMemo(() => parseFormation(callText), [callText]);
+      const routesMap = useMemo(() => parseRoutes(callText), [callText]);
 
-      function Field({ formationName }) {
-        const players = useMemo(() => playersForFormation(formationName), [formationName]);
-
-        // Yard lines every ~10 yards (stylized)
-        const lines = [];
-        for (let i = 0; i <= 10; i++) {
-          const x = (W * i) / 10;
-          lines.push(h("line", {
-            key: "l" + i,
-            x1: x, x2: x, y1: 20, y2: H - 20,
-            stroke: "rgba(255,255,255,0.15)", strokeWidth: 1
-          }));
-        }
-
-        return h("div", { className: "field-wrap" },
-          h("svg", { className: "field", viewBox: `0 0 ${W} ${H}`, width: "100%", height: "auto" },
-            // field bg
-            h("rect", { x: 0, y: 0, width: W, height: H, fill: "url(#g)" }),
-            h("defs", null,
-              h("linearGradient", { id: "g", x1: 0, y1: 0, x2: 0, y2: 1 },
-                h("stop", { offset: "0%", stopColor: "#0d4a26" }),
-                h("stop", { offset: "100%", stopColor: "#0c381e" })
-              )
-            ),
-            // yard lines
-            ...lines,
-            // sidelines
-            h("rect", { x: 4, y: 4, width: W - 8, height: H - 8, fill: "none", stroke: "rgba(255,255,255,0.25)", strokeWidth: 2, rx: 10 }),
-            // LOS
-            h("line", { x1: 20, x2: W - 20, y1: LOS_Y, y2: LOS_Y, stroke: "#ffe28a", strokeWidth: 2 }),
-            // players
-            ...players.map(p =>
-              h("g", { key: p.id },
-                h("circle", { cx: p.x, cy: p.y, r: 12, fill: "#e9e9ee" }),
-                h("text", {
-                  x: p.x, y: p.y + 4, textAnchor: "middle",
-                  fill: "#0f0f12", fontWeight: 700, fontSize: 10
-                }, p.id)
+      return h("div", { className:"container", style:{paddingTop:"18px", paddingBottom:"32px"} },
+        h("div", { className:"grid" },
+          // Live Preview
+          h("div", { className:"col-12" },
+            h("div", { className:"card" },
+              h("div", { className:"header" },
+                h("div", { style:{fontWeight:600} }, "Live Formation + Routes"),
+                h("div", { className:"muted" }, "Try: trips right, bunch left, empty, pistol, i right, 2x2")
+              ),
+              h("div", { className:"body" },
+                h(Field, { formationName, routesMap })
               )
             )
           ),
-          h("div", { className: "caption" },
-            h("div", { className: "pill" }, "Formation: ", h("strong", null, " ", formationName)),
-            h("div", { className: "legend" },
-              h("span", { className: "badge" }, "LOS = yellow line"),
-              h("span", { className: "badge" }, "Drag to select text; diagram static (for now)")
-            )
-          )
-        );
-      }
-
-      /** ---------------- App ---------------- */
-      function PlaybookHome() {
-        const [plays, setPlays] = useState([]);  // not used yet, keeping from earlier
-        const [callText, setCallText] = useState("");
-        const inputRef = useRef(null);
-
-        const formationName = useMemo(() => parseFormation(callText), [callText]);
-
-        function addPlayFromCall() {
-          const raw = callText.trim();
-          if (!raw) return;
-          const name = deriveName(raw);
-          const id = (crypto && crypto.randomUUID) ? crypto.randomUUID() : String(Date.now());
-          setPlays(p => [{ id, name, call: raw, createdAt: Date.now() }, ...p]);
-          setCallText("");
-          queueMicrotask(() => inputRef.current && inputRef.current.focus());
-        }
-
-        function deriveName(raw) {
-          const tokens = raw.split(/\s+/).filter(Boolean);
-          return tokens.length ? tokens.slice(0, 3).join(" ") : (raw.slice(0, 20) || "Untitled Play");
-        }
-
-        return h("div", { className: "container", style: { paddingTop: "18px", paddingBottom: "32px" } },
-          h("div", { className: "grid" },
-            // Formation Live Preview
-            h("div", { className: "col-12" },
-              h("div", { className: "card" },
-                h("div", { className: "header" },
-                  h("div", { style: { fontWeight: 600 } }, "Live Formation Preview"),
-                  h("div", { className: "muted" }, "Type in the box below: “trips right”, “trips left”, or “2x2”")
-                ),
-                h("div", { className: "body" },
-                  h(Field, { formationName })
-                )
-              )
-            ),
-
-            // Play Call Input
-            h("div", { className: "col-12" },
-              h("div", { className: "card" },
-                h("div", { className: "body" },
-                  h("label", { htmlFor: "play-call", style: { display: "block", fontWeight: 600, marginBottom: 8 } }, "Play call"),
-                  h("textarea", {
-                    id: "play-call",
-                    ref: inputRef,
-                    value: callText,
-                    onChange: e => setCallText(e.target.value),
-                    placeholder: "Try: Trips Right   or   Trips Left   or   2x2 (Doubles)",
-                    rows: 3,
-                    onKeyDown: e => {
-                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                        e.preventDefault();
-                        addPlayFromCall();
-                      }
-                    }
-                  }),
-                  h("div", { style: { marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" } },
-                    h("div", { className: "muted" },
-                      "Tip: Press ",
-                      h("span", { className: "kbd" }, "Ctrl/⌘"),
-                      "+",
-                      h("span", { className: "kbd" }, "Enter"),
-                      " to save as a play"
-                    ),
-                    h("div", { className: "actions" },
-                      h("button", { className: "btn", onClick: () => setCallText("") }, "Clear"),
-                      h("button", { className: "btn primary", onClick: addPlayFromCall }, "Save Play")
-                    )
+          // Input
+          h("div", { className:"col-12" },
+            h("div", { className:"card" },
+              h("div", { className:"body" },
+                h("label", { htmlFor:"play-call", style:{display:"block",fontWeight:600,marginBottom:8} }, "Play call"),
+                h("textarea", {
+                  id:"play-call",
+                  value:callText,
+                  onChange:e=>setCallText(e.target.value),
+                  placeholder:"Examples: \ntrips right — X post 12, Y go, Z in 5, RB swing, TE sit 5\nbunch left — Z corner 10, Y drag 5, H flat 3, RB wheel 20",
+                  rows:4
+                }),
+                h("div", { style:{marginTop:10, display:"flex", justifyContent:"space-between", alignItems:"center"} },
+                  h("div", { className:"muted" }, "Define routes like: X post 12, Y go, Z in 5, RB swing"),
+                  h("div", null,
+                    h("button", { className:"btn", onClick:()=>setCallText("") }, "Clear")
                   )
                 )
               )
             )
           )
-        );
-      }
+        )
+      );
+    }
 
-      createRoot(document.getElementById("root")).render(React.createElement(PlaybookHome));
-    </script>
-  </body>
+    createRoot(document.getElementById("root")).render(React.createElement(App));
+  </script>
+</body>
 </html>
-```
-
-### What you can type right now
-
-* `trips right`
-* `trips left`
-* `2x2` or `doubles`
-* (anything else defaults to a balanced base look)
-
-### Next up (I can wire any of these immediately)
-
-* Add more formations (`bunch`, `empty`, `i right/left`, `pistol`, `trio`, `trey`, etc.)
-* Show **routes** as you add “X post, Y go, Z in, RB swing, TE sit” (simple path parser → SVG polylines).
-* Small route knobs: depth numbers like `post 12`, `in 5`.
-* A toggle to flip field direction (left/right hash).
-* Save the parsed formation + routes into your `plays` list (ready for Dexie later).
-
-Tell me which formation set you want expanded first (bunch/empty/pistol?), and I’ll add them + quick route shapes so you can start “drawing” by typing.
