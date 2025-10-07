@@ -6,7 +6,7 @@
       name="viewport"
       content="width=device-width, initial-scale=1, viewport-fit=cover"
     />
-    <title>Playbook (Zero-Dependency)</title>
+    <title>Playbook (No JSX / No Babel)</title>
     <style>
       :root {
         --bg: #0f0f12;
@@ -112,10 +112,12 @@
 
     <div id="root"></div>
 
-    <!-- React (ESM) -->
+    <!-- React (ESM, no JSX) -->
     <script type="module">
-      import React, { useMemo, useRef, useState } from "https://esm.sh/react@18";
+      import React from "https://esm.sh/react@18";
       import { createRoot } from "https://esm.sh/react-dom@18/client";
+
+      const { useState, useRef, useMemo, createElement: h } = React;
 
       function PlaybookHome() {
         const [plays, setPlays] = useState([]);
@@ -141,96 +143,96 @@
           setPlays(p => p.filter(x => x.id !== id));
         }
 
-        const emptyState = useMemo(() => (
-          <div className="empty">
-            <div style="text-align:center">
-              <div style="margin-bottom:8px">▶</div>
-              <div>No plays yet</div>
-              <div className="muted">Enter a play call below to add your first play.</div>
-            </div>
-          </div>
-        ), []);
+        const emptyState = useMemo(() =>
+          h("div", { className: "empty" },
+            h("div", { style: { textAlign: "center" } },
+              h("div", { style: { marginBottom: 8 } }, "▶"),
+              h("div", null, "No plays yet"),
+              h("div", { className: "muted" }, "Enter a play call below to add your first play.")
+            )
+          )
+        , []);
 
-        return (
-          <div className="container" style={{paddingTop: "18px", paddingBottom: "32px"}}>
-            <div className="grid">
-              {/* Plays Box */}
-              <div className="col-12">
-                <div className="card">
-                  <div className="header">
-                    <div style={{fontWeight:600}}>Plays</div>
-                    <div className="muted">{plays.length} {plays.length === 1 ? "play" : "plays"}</div>
-                  </div>
-                  <div className="body plays-box">
-                    {plays.length === 0 ? (
-                      <div className="card" style="height:100%; border: 1px dashed #2a2d36; background:none;">
-                        {emptyState}
-                      </div>
-                    ) : (
-                      <div className="grid" style={{gridTemplateColumns:"repeat(12,1fr)"}}>
-                        {plays.map(play => (
-                          <div className="col-12 col-sm-6 col-sm-4" key={play.id}>
-                            <div className="play-card">
-                              <div className="h">
-                                <div>
-                                  <div className="name" title={play.name}>{play.name}</div>
-                                  <div className="meta">{new Date(play.createdAt).toLocaleString()}</div>
-                                </div>
-                                <button className="btn" onClick={() => removePlay(play.id)} title="Delete">Delete</button>
-                              </div>
-                              <div className="content">
-                                <div className="preview">Diagram preview</div>
-                                <div style="font: 12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace; color:#cbd3ff;">
-                                  {play.call}
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </div>
+        // Plays grid
+        const playsGrid = plays.length === 0
+          ? h("div", { className: "card", style: { height: "100%", border: "1px dashed #2a2d36", background: "none" } }, emptyState)
+          : h("div", { className: "grid", style: { gridTemplateColumns: "repeat(12,1fr)" } },
+              ...plays.map(play =>
+                h("div", { className: "col-12 col-sm-6 col-sm-4", key: play.id },
+                  h("div", { className: "play-card" },
+                    h("div", { className: "h" },
+                      h("div", null,
+                        h("div", { className: "name", title: play.name }, play.name),
+                        h("div", { className: "meta" }, new Date(play.createdAt).toLocaleString())
+                      ),
+                      h("button", { className: "btn", onClick: () => removePlay(play.id), title: "Delete" }, "Delete")
+                    ),
+                    h("div", { className: "content" },
+                      h("div", { className: "preview" }, "Diagram preview"),
+                      h("div", { style: {
+                        font: "12px ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace",
+                        color: "#cbd3ff",
+                        whiteSpace: "pre-wrap",
+                        wordBreak: "break-word"
+                      }}, play.call)
+                    )
+                  )
+                )
+              )
+            );
 
-              {/* Input Box */}
-              <div className="col-12">
-                <div className="card">
-                  <div className="body">
-                    <label for="play-call" style="display:block; font-weight:600; margin-bottom:8px;">Play call</label>
-                    <textarea
-                      id="play-call"
-                      ref={inputRef}
-                      value={callText}
-                      onChange={e => setCallText(e.target.value)}
-                      placeholder="e.g., Trips Right 2x2 — X Post, Y Go, Z In, RB Swing, TE 5yd Sit"
-                      rows="4"
-                      onKeyDown={e => {
-                        if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
-                          e.preventDefault();
-                          addPlayFromCall();
-                        }
-                      }}
-                    ></textarea>
-                    <div style="margin-top:10px; display:flex; justify-content:space-between; align-items:center;">
-                      <div className="muted">
-                        Tip: Press <span class="kbd">Ctrl/⌘</span>+<span class="kbd">Enter</span> to add quickly
-                      </div>
-                      <div className="actions">
-                        <button className="btn" onClick={() => setCallText("")}>Clear</button>
-                        <button className="btn primary" onClick={addPlayFromCall}>Add to Plays</button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-            </div>
-          </div>
+        return h("div", { className: "container", style: { paddingTop: "18px", paddingBottom: "32px" } },
+          // Plays Box
+          h("div", { className: "grid" },
+            h("div", { className: "col-12" },
+              h("div", { className: "card" },
+                h("div", { className: "header" },
+                  h("div", { style: { fontWeight: 600 } }, "Plays"),
+                  h("div", { className: "muted" }, `${plays.length} ${plays.length === 1 ? "play" : "plays"}`)
+                ),
+                h("div", { className: "body plays-box" }, playsGrid)
+              )
+            ),
+            // Input Box
+            h("div", { className: "col-12" },
+              h("div", { className: "card" },
+                h("div", { className: "body" },
+                  h("label", { htmlFor: "play-call", style: { display: "block", fontWeight: 600, marginBottom: 8 } }, "Play call"),
+                  h("textarea", {
+                    id: "play-call",
+                    ref: inputRef,
+                    value: callText,
+                    onChange: e => setCallText(e.target.value),
+                    placeholder: "e.g., Trips Right 2x2 — X Post, Y Go, Z In, RB Swing, TE 5yd Sit",
+                    rows: 4,
+                    onKeyDown: e => {
+                      if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+                        e.preventDefault();
+                        addPlayFromCall();
+                      }
+                    }
+                  }),
+                  h("div", { style: { marginTop: 10, display: "flex", justifyContent: "space-between", alignItems: "center" } },
+                    h("div", { className: "muted" },
+                      "Tip: Press ",
+                      h("span", { className: "kbd" }, "Ctrl/⌘"),
+                      "+",
+                      h("span", { className: "kbd" }, "Enter"),
+                      " to add quickly"
+                    ),
+                    h("div", { className: "actions" },
+                      h("button", { className: "btn", onClick: () => setCallText("") }, "Clear"),
+                      h("button", { className: "btn primary", onClick: addPlayFromCall }, "Add to Plays")
+                    )
+                  )
+                )
+              )
+            )
+          )
         );
       }
 
-      createRoot(document.getElementById("root")).render(<PlaybookHome />);
+      createRoot(document.getElementById("root")).render(React.createElement(PlaybookHome));
     </script>
   </body>
 </html>
