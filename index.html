@@ -3,33 +3,40 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Playbook — Live Formations + Routes (No JSX)</title>
+  <title>Playbook — Live + Save + Quick Call (No JSX)</title>
   <style>
     :root {
-      --bg: #0f0f12; --card:#15161a; --muted:#8b8d93; --text:#e9e9ee; --accent:#6ea8fe;
+      --bg:#0f0f12; --card:#15161a; --muted:#8b8d93; --text:#e9e9ee; --accent:#6ea8fe;
       --border:#24262c; --shadow:0 8px 30px rgba(0,0,0,0.35);
       --field:#0e3a1e; --player:#e9e9ee; --label:#0f0f12; --route:#fbd38d;
     }
     *{box-sizing:border-box} html,body{height:100%}
-    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial; background:radial-gradient(1200px 800px at 80% -100px,#1b1e27,transparent),var(--bg); color:var(--text)}
+    body{margin:0;font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;background:radial-gradient(1200px 800px at 80% -100px,#1b1e27,transparent),var(--bg);color:var(--text)}
     header{position:sticky;top:0;z-index:10;border-bottom:1px solid var(--border);background:rgba(15,15,18,.7);backdrop-filter:blur(8px)}
     .container{max-width:1100px;margin:0 auto;padding:16px}
     .title{font-size:20px;font-weight:700}
     .row{display:flex;gap:8px;align-items:center}.right{margin-left:auto}
     .btn{background:var(--card);color:var(--text);border:1px solid var(--border);padding:8px 12px;border-radius:12px;cursor:pointer}
     .btn.primary{background:var(--accent);color:#0b1220;border-color:transparent}
+    .btn.small{padding:6px 10px;border-radius:10px;font-size:12px}
     .grid{display:grid;gap:14px;grid-template-columns:repeat(12,1fr)} .col-12{grid-column:span 12}
     @media(min-width:640px){.col-sm-6{grid-column:span 6}.col-sm-4{grid-column:span 4}}
     .card{background:var(--card);border:1px solid var(--border);border-radius:20px;box-shadow:var(--shadow)}
     .card .body{padding:16px}.card .header{padding:16px;border-bottom:1px solid var(--border);display:flex;justify-content:space-between;align-items:center}
     .muted{color:var(--muted);font-size:12px}
-    textarea{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:#0f1116;color:var(--text);outline:none}
-    textarea:focus{border-color:#2b3342}
+    textarea,input[type="text"]{width:100%;padding:12px 14px;border-radius:12px;border:1px solid var(--border);background:#0f1116;color:var(--text);outline:none}
+    textarea:focus,input[type="text"]:focus{border-color:#2b3342}
     .kbd{border:1px solid var(--border);border-radius:6px;padding:0 6px;font-size:12px}
     .legend{display:flex;gap:8px;flex-wrap:wrap}.badge{font-size:11px;padding:4px 8px;border-radius:999px;border:1px solid var(--border);background:#0f1116;color:var(--text)}
+    .actions{display:flex;gap:8px;align-items:center}
     /* Field */
     .field-wrap{background:#0c1014;border-radius:16px;padding:8px;border:1px solid var(--border)}
     .caption{display:flex;justify-content:space-between;align-items:center;margin-top:8px}
+    .saved-grid{display:grid;gap:12px;grid-template-columns:repeat(12,1fr)}
+    .saved-card{grid-column:span 12;background:#0f1116;border:1px solid var(--border);border-radius:16px}
+    @media(min-width:640px){.saved-card{grid-column:span 6}}
+    .saved-head{display:flex;justify-content:space-between;align-items:center;padding:10px 12px;border-bottom:1px solid var(--border)}
+    .saved-name{font-weight:700}
   </style>
 </head>
 <body>
@@ -48,17 +55,13 @@
   <script type="module">
     import React from "https://esm.sh/react@18";
     import { createRoot } from "https://esm.sh/react-dom@18/client";
-    const { useState, useRef, useMemo, createElement: h } = React;
+    const { useState, useRef, useMemo, useEffect, createElement: h } = React;
 
     /** ----------------- Parse formation + routes ----------------- */
     const FORM = {
-      TRIPS_R: "Trips Right", TRIPS_L: "Trips Left",
-      DOUBLES: "2x2 (Doubles)",
-      BUNCH_R: "Bunch Right", BUNCH_L: "Bunch Left",
-      EMPTY: "Empty",
-      PISTOL: "Pistol",
-      I_R: "I Right", I_L: "I Left",
-      BASE: "Base 11 (Balanced)"
+      TRIPS_R:"Trips Right", TRIPS_L:"Trips Left", DOUBLES:"2x2 (Doubles)",
+      BUNCH_R:"Bunch Right", BUNCH_L:"Bunch Left", EMPTY:"Empty",
+      PISTOL:"Pistol", I_R:"I Right", I_L:"I Left", BASE:"Base 11 (Balanced)"
     };
 
     function parseFormation(text) {
@@ -80,11 +83,9 @@
       const m = {};
       if (!text) return m;
       const normalized = text.toLowerCase().replace(/—/g, "-");
-      // split on commas
       normalized.split(",").forEach(chunk => {
         const c = chunk.trim();
-        // match: id route depth?
-        const re = /\b(x|y|z|h|rb|te)\s+([a-z]+)\s*(\d+)?/i;
+        const re = /\b(x|y|z|h|rb|te|fb)\s+([a-z]+)\s*(\d+)?/i;
         const k = c.match(re);
         if (!k) return;
         const id = k[1].toUpperCase();
@@ -98,295 +99,279 @@
     function routeAlias(word) {
       const w = word.toLowerCase();
       const map = {
-        go: "go", fly: "go", seam: "seam",
-        post: "post", corner: "corner",
-        in: "in", dig: "in",
-        out: "out", speedout: "out",
-        slant: "slant", drag: "drag", cross: "drag",
-        curl: "curl", comeback: "comeback", hitch: "hitch", stop: "hitch",
-        wheel: "wheel", swing: "swing", flat: "flat",
-        sit: "sit"
+        go:"go", fly:"go", seam:"seam",
+        post:"post", corner:"corner",
+        in:"in", dig:"in", out:"out",
+        slant:"slant", drag:"drag", cross:"drag",
+        curl:"curl", comeback:"comeback", hitch:"hitch", stop:"hitch",
+        wheel:"wheel", swing:"swing", flat:"flat", sit:"sit"
       };
       return map[w] || "go";
     }
     function defaultDepth(type) {
-      const d = { go: 30, seam: 25, post: 18, corner: 18, in: 12, out: 12, slant: 6, drag: 5,
-                  curl: 12, comeback: 14, hitch: 6, wheel: 20, swing: 3, flat: 3, sit: 6 };
+      const d = { go:30, seam:25, post:18, corner:18, in:12, out:12, slant:6, drag:5, curl:12, comeback:14, hitch:6, wheel:20, swing:3, flat:3, sit:6 };
       return d[type] || 12;
     }
 
     /** ----------------- Field + positions ----------------- */
-    const W = 900, H = 520;
-    const LOS_Y = 260, WR_Y = LOS_Y - 10, TE_Y = LOS_Y - 10, OL_Y = LOS_Y - 12, QB_Y = LOS_Y + 36, RB_Y = LOS_Y + 22;
-    const YPX = 6; // pixels per yard (rough)
+    const W=900, H=520;
+    const LOS_Y=260, WR_Y=LOS_Y-10, TE_Y=LOS_Y-10, OL_Y=LOS_Y-12, QB_Y=LOS_Y+36, RB_Y=LOS_Y+22;
+    const YPX=6; // approx px/yd
 
     function playersForFormation(name) {
-      // Base 11 personnel: QB, RB, TE, X/Z outside, Y/H slots + 5 OL
       const OL = [
-        { id: "LT", x: W*0.36, y: OL_Y }, { id: "LG", x: W*0.40, y: OL_Y },
-        { id: "C",  x: W*0.44, y: OL_Y }, { id: "RG", x: W*0.48, y: OL_Y },
-        { id: "RT", x: W*0.52, y: OL_Y }
+        { id:"LT", x: W*0.36, y: OL_Y }, { id:"LG", x: W*0.40, y: OL_Y },
+        { id:"C",  x: W*0.44, y: OL_Y }, { id:"RG", x: W*0.48, y: OL_Y },
+        { id:"RT", x: W*0.52, y: OL_Y }
       ];
-      const QB = { id: "QB", x: W*0.44, y: QB_Y };
-      const RB = { id: "RB", x: W*0.50, y: RB_Y };
+      const QB = { id:"QB", x: W*0.44, y: QB_Y };
+      const RB = { id:"RB", x: W*0.50, y: RB_Y };
 
       switch (name) {
         case FORM.TRIPS_R:
           return [...OL, QB, RB,
-            { id:"X", x: W*0.20, y: WR_Y },
-            { id:"Z", x: W*0.72, y: WR_Y },
-            { id:"Y", x: W*0.64, y: WR_Y },
-            { id:"H", x: W*0.56, y: WR_Y },
-            { id:"TE",x: W*0.36, y: TE_Y }
+            { id:"X", x:W*0.20, y:WR_Y }, { id:"Z", x:W*0.72, y:WR_Y },
+            { id:"Y", x:W*0.64, y:WR_Y }, { id:"H", x:W*0.56, y:WR_Y },
+            { id:"TE",x:W*0.36, y:TE_Y }
           ];
         case FORM.TRIPS_L:
           return [...OL, QB, RB,
-            { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"X", x: W*0.24, y: WR_Y },
-            { id:"Y", x: W*0.32, y: WR_Y },
-            { id:"H", x: W*0.40, y: WR_Y },
-            { id:"TE",x: W*0.52, y: TE_Y }
+            { id:"Z", x:W*0.68, y:WR_Y }, { id:"X", x:W*0.24, y:WR_Y },
+            { id:"Y", x:W*0.32, y:WR_Y }, { id:"H", x:W*0.40, y:WR_Y },
+            { id:"TE",x:W*0.52, y:TE_Y }
           ];
-        case FORM.DOUBLES: // 2x2
+        case FORM.DOUBLES:
           return [...OL, QB, RB,
-            { id:"X", x: W*0.22, y: WR_Y }, { id:"Y", x: W*0.32, y: WR_Y },
-            { id:"Z", x: W*0.66, y: WR_Y }, { id:"H", x: W*0.56, y: WR_Y },
-            { id:"TE",x: W*0.36, y: TE_Y }
+            { id:"X", x:W*0.22, y:WR_Y }, { id:"Y", x:W*0.32, y:WR_Y },
+            { id:"Z", x:W*0.66, y:WR_Y }, { id:"H", x:W*0.56, y:WR_Y },
+            { id:"TE",x:W*0.36, y:TE_Y }
           ];
         case FORM.BUNCH_R:
           return [...OL, QB, RB,
-            { id:"X", x: W*0.22, y: WR_Y },
-            // bunch cluster right
-            { id:"Z", x: W*0.62, y: WR_Y },
-            { id:"Y", x: W*0.58, y: WR_Y + 8 },
-            { id:"H", x: W*0.56, y: WR_Y - 8 },
-            { id:"TE",x: W*0.36, y: TE_Y }
+            { id:"X", x:W*0.22, y:WR_Y },
+            { id:"Z", x:W*0.62, y:WR_Y }, { id:"Y", x:W*0.58, y:WR_Y+8 }, { id:"H", x:W*0.56, y:WR_Y-8 },
+            { id:"TE",x:W*0.36, y:TE_Y }
           ];
         case FORM.BUNCH_L:
           return [...OL, QB, RB,
-            { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"X", x: W*0.28, y: WR_Y },
-            { id:"Y", x: W*0.42, y: WR_Y + 8 },
-            { id:"H", x: W*0.40, y: WR_Y - 8 },
-            { id:"TE",x: W*0.52, y: TE_Y }
+            { id:"Z", x:W*0.68, y:WR_Y },
+            { id:"X", x:W*0.28, y:WR_Y }, { id:"Y", x:W*0.42, y:WR_Y+8 }, { id:"H", x:W*0.40, y:WR_Y-8 },
+            { id:"TE",x:W*0.52, y:TE_Y }
           ];
         case FORM.EMPTY:
-          return [...OL, { ...QB, y: LOS_Y + 26 }, // shallower “gun”
-            // 5 wide
-            { id:"X", x: W*0.20, y: WR_Y },
-            { id:"Y", x: W*0.34, y: WR_Y },
-            { id:"TE",x: W*0.44, y: WR_Y + 2 },
-            { id:"H", x: W*0.54, y: WR_Y },
-            { id:"Z", x: W*0.70, y: WR_Y }
+          return [...OL, { ...QB, y: LOS_Y+26 },
+            { id:"X", x:W*0.20, y:WR_Y }, { id:"Y", x:W*0.34, y:WR_Y },
+            { id:"TE",x:W*0.44, y:WR_Y+2 }, { id:"H", x:W*0.54, y:WR_Y }, { id:"Z", x:W*0.70, y:WR_Y }
           ];
         case FORM.PISTOL:
-          return [...OL, { ...QB, y: LOS_Y + 30 }, { ...RB, x: W*0.44, y: LOS_Y + 58 },
-            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"TE",x: W*0.52, y: TE_Y }, { id:"Y", x: W*0.32, y: WR_Y }
+          return [...OL, { ...QB, y: LOS_Y+30 }, { ...RB, x:W*0.44, y:LOS_Y+58 },
+            { id:"X", x:W*0.22, y:WR_Y }, { id:"Z", x:W*0.68, y:WR_Y },
+            { id:"TE",x:W*0.52, y:TE_Y }, { id:"Y", x:W*0.32, y:WR_Y }
           ];
         case FORM.I_R:
-          return [...OL, { ...QB, y: LOS_Y + 24 },
-            { id: "FB", x: W*0.44, y: LOS_Y + 44 },
-            { id: "RB", x: W*0.44, y: LOS_Y + 64 },
-            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"TE",x: W*0.52, y: TE_Y }
+          return [...OL, { ...QB, y: LOS_Y+24 },
+            { id:"FB", x:W*0.44, y:LOS_Y+44 }, { id:"RB", x:W*0.44, y:LOS_Y+64 },
+            { id:"X", x:W*0.22, y:WR_Y }, { id:"Z", x:W*0.68, y:WR_Y }, { id:"TE",x:W*0.52, y:TE_Y }
           ];
         case FORM.I_L:
-          return [...OL, { ...QB, y: LOS_Y + 24 },
-            { id: "FB", x: W*0.44, y: LOS_Y + 44 },
-            { id: "RB", x: W*0.44, y: LOS_Y + 64 },
-            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"TE",x: W*0.36, y: TE_Y }
+          return [...OL, { ...QB, y: LOS_Y+24 },
+            { id:"FB", x:W*0.44, y:LOS_Y+44 }, { id:"RB", x:W*0.44, y:LOS_Y+64 },
+            { id:"X", x:W*0.22, y:WR_Y }, { id:"Z", x:W*0.68, y:WR_Y }, { id:"TE",x:W*0.36, y:TE_Y }
           ];
         default:
           return [...OL, QB, RB,
-            { id:"X", x: W*0.22, y: WR_Y }, { id:"Z", x: W*0.68, y: WR_Y },
-            { id:"TE",x: W*0.52, y: TE_Y }, { id:"Y", x: W*0.32, y: WR_Y }
+            { id:"X", x:W*0.22, y:WR_Y }, { id:"Z", x:W*0.68, y:WR_Y },
+            { id:"TE",x:W*0.52, y:TE_Y }, { id:"Y", x:W*0.32, y:WR_Y }
           ];
       }
     }
 
-    /** ----------------- Route geometry ----------------- */
-    // Basic shapes: go, post, corner, in, out, slant, drag, curl, comeback, hitch, wheel, swing, flat, seam, sit
     function routePoints(start, type, depth) {
-      // y decreases going downfield
       const up = -depth * YPX;
-      const stem = -Math.min(depth, 8) * YPX; // short stem for breaks
+      const stem = -Math.min(depth, 8) * YPX;
       const pts = [[start.x, start.y]];
+      const midHash = W * 0.44;
+      const sideline = start.x < W/2 ? 20 : W - 20;
 
       switch (type) {
-        case "go":
-        case "seam":
-          pts.push([start.x, start.y + up]);
-          break;
-        case "post": {
-          const midX = (W * 0.44); // towards middle of field (hash area)
-          pts.push([start.x, start.y + stem]);
-          pts.push([lerp(start.x, midX, 0.8), start.y + up]);
-          break;
-        }
-        case "corner": {
-          const sideline = start.x < W/2 ? 20 : W - 20;
-          pts.push([start.x, start.y + stem]);
-          pts.push([lerp(start.x, sideline, 0.8), start.y + up]);
-          break;
-        }
-        case "in":
-          pts.push([start.x, start.y + stem]);
-          pts.push([start.x + (start.x < W/2 ? 1 : -1) * 120, start.y + stem]); // break across
-          break;
-        case "out":
-          pts.push([start.x, start.y + stem]);
-          pts.push([start.x + (start.x < W/2 ? -1 : 1) * 120, start.y + stem]);
-          break;
-        case "slant":
-          pts.push([start.x + (start.x < W/2 ? 70 : -70), start.y - 70]);
-          break;
-        case "drag":
-          pts.push([start.x, start.y + stem * 0.4]);
-          pts.push([start.x + (start.x < W/2 ? 160 : -160), start.y + stem * 0.4]);
-          break;
-        case "curl":
-          pts.push([start.x, start.y + up]);
-          pts.push([start.x, start.y + up + 36]); // come back a bit
-          break;
-        case "comeback":
-          pts.push([start.x, start.y + up]);
-          pts.push([start.x + (start.x < W/2 ? -40 : 40), start.y + up + 48]);
-          break;
-        case "hitch":
-        case "sit":
-          pts.push([start.x, start.y + up * 0.3]);
-          break;
-        case "wheel": {
-          const flatX = start.x + (start.x < W/2 ? -140 : 140);
-          pts.push([flatX, start.y + 10]);  // flat to sideline
-          pts.push([flatX, start.y + up]);  // turn up
-          break;
-        }
-        case "swing":
-        case "flat": {
-          const dx = (start.x < W/2 ? -140 : 140);
-          pts.push([start.x + dx, start.y + 12]);
-          break;
-        }
-        default:
-          pts.push([start.x, start.y + up]);
+        case "go": case "seam": pts.push([start.x, start.y + up]); break;
+        case "post": pts.push([start.x, start.y + stem]); pts.push([lerp(start.x, midHash, 0.8), start.y + up]); break;
+        case "corner": pts.push([start.x, start.y + stem]); pts.push([lerp(start.x, sideline, 0.8), start.y + up]); break;
+        case "in": pts.push([start.x, start.y + stem]); pts.push([start.x + (start.x < W/2 ? 120 : -120), start.y + stem]); break;
+        case "out": pts.push([start.x, start.y + stem]); pts.push([start.x + (start.x < W/2 ? -120 : 120), start.y + stem]); break;
+        case "slant": pts.push([start.x + (start.x < W/2 ? 70 : -70), start.y - 70]); break;
+        case "drag": pts.push([start.x, start.y + stem * 0.4]); pts.push([start.x + (start.x < W/2 ? 160 : -160), start.y + stem * 0.4]); break;
+        case "curl": pts.push([start.x, start.y + up]); pts.push([start.x, start.y + up + 36]); break;
+        case "comeback": pts.push([start.x, start.y + up]); pts.push([start.x + (start.x < W/2 ? -40 : 40), start.y + up + 48]); break;
+        case "hitch": case "sit": pts.push([start.x, start.y + up * 0.3]); break;
+        case "wheel": { const flatX = start.x + (start.x < W/2 ? -140 : 140); pts.push([flatX, start.y + 10]); pts.push([flatX, start.y + up]); break; }
+        case "swing": case "flat": pts.push([start.x + (start.x < W/2 ? -140 : 140), start.y + 12]); break;
+        default: pts.push([start.x, start.y + up]);
       }
       return pts;
     }
-
     function lerp(a,b,t){ return a + (b-a)*t; }
+
+    function varPlayerFill(id){ return ["QB","RB","FB","X","Y","Z","H","TE"].includes(id) ? "#e9e9ee" : "#c7cad1"; }
+    function varTextFill(){ return "#0f0f12"; }
+    function varRouteColor(id){ const map={X:"#60a5fa",Y:"#34d399",Z:"#f472b6",H:"#fbbf24",TE:"#a78bfa",RB:"#f87171",FB:"#22c55e"}; return map[id]||"#fbd38d"; }
 
     /** ----------------- Components ----------------- */
     function Field({ formationName, routesMap }) {
-      const players = useMemo(() => playersForFormation(formationName), [formationName]);
-
+      const players = React.useMemo(() => playersForFormation(formationName), [formationName]);
       const yardLines = [];
-      for (let i = 0; i <= 10; i++) {
-        const x = (W * i) / 10;
-        yardLines.push(h("line", { key: "yl"+i, x1:x, x2:x, y1:20, y2:H-20, stroke:"rgba(255,255,255,.15)", strokeWidth:1 }));
-      }
+      for (let i=0;i<=10;i++){ const x=(W*i)/10; yardLines.push(h("line",{key:"yl"+i,x1:x,x2:x,y1:20,y2:H-20,stroke:"rgba(255,255,255,.15)",strokeWidth:1})); }
 
-      return h("div", { className: "field-wrap" },
-        h("svg", { viewBox:`0 0 ${W} ${H}`, width:"100%", height:"auto" },
-          // field background
-          h("rect", { x:0, y:0, width:W, height:H, fill:"url(#g)" }),
-          h("defs", null,
-            h("linearGradient", { id:"g", x1:0, y1:0, x2:0, y2:1 },
-              h("stop", { offset:"0%", stopColor:"#0d4a26" }),
-              h("stop", { offset:"100%", stopColor:"#0c381e" })
+      return h("div",{className:"field-wrap"},
+        h("svg",{viewBox:`0 0 ${W} ${H}`,width:"100%",height:"auto"},
+          h("rect",{x:0,y:0,width:W,height:H,fill:"url(#g)"}),
+          h("defs",null,
+            h("linearGradient",{id:"g",x1:0,y1:0,x2:0,y2:1},
+              h("stop",{offset:"0%",stopColor:"#0d4a26"}),
+              h("stop",{offset:"100%",stopColor:"#0c381e"})
             )
           ),
           ...yardLines,
-          // sidelines
-          h("rect", { x:4, y:4, width:W-8, height:H-8, fill:"none", stroke:"rgba(255,255,255,.25)", strokeWidth:2, rx:10 }),
-          // LOS
-          h("line", { x1:20, x2:W-20, y1:LOS_Y, y2:LOS_Y, stroke:"#ffe28a", strokeWidth:2 }),
+          h("rect",{x:4,y:4,width:W-8,height:H-8,fill:"none",stroke:"rgba(255,255,255,.25)",strokeWidth:2,rx:10}),
+          h("line",{x1:20,x2:W-20,y1:LOS_Y,y2:LOS_Y,stroke:"#ffe28a",strokeWidth:2}),
 
-          // ROUTES first (under player circles)
-          ...players.flatMap(p => {
-            const r = routesMap[p.id];
-            if (!r) return [];
-            const pts = routePoints(p, r.type, r.depth);
-            const d = pts.map(([x,y]) => `${x},${y}`).join(" ");
+          // routes
+          ...players.flatMap(p=>{
+            const r=routesMap[p.id]; if(!r) return [];
+            const pts=routePoints(p,r.type,r.depth);
+            const d=pts.map(([x,y])=>`${x},${y}`).join(" ");
             return [
-              h("polyline", { key:`r-${p.id}`, points:d, fill:"none", stroke:varRouteColor(p.id), strokeWidth:4, strokeLinejoin:"round" }),
-              h("circle", { key:`r-dot-${p.id}`, cx:pts[pts.length-1][0], cy:pts[pts.length-1][1], r:3, fill:varRouteColor(p.id) })
+              h("polyline",{key:`r-${p.id}`,points:d,fill:"none",stroke:varRouteColor(p.id),strokeWidth:4,strokeLinejoin:"round"}),
+              h("circle",{key:`r-dot-${p.id}`,cx:pts[pts.length-1][0],cy:pts[pts.length-1][1],r:3,fill:varRouteColor(p.id)})
             ];
           }),
 
           // players
-          ...players.map(p =>
-            h("g", { key:p.id },
-              h("circle", { cx:p.x, cy:p.y, r:12, fill:varPlayerFill(p.id) }),
-              h("text", { x:p.x, y:p.y+4, textAnchor:"middle", fill:varTextFill(p.id), fontWeight:700, fontSize:10 }, p.id)
-            )
-          )
-        ),
-        h("div", { className: "caption" },
-          h("div", null, h("span", { className:"badge" }, "Formation: ", formationName)),
-          h("div", { className:"legend" },
-            h("span", { className:"badge" }, "LOS = yellow"),
-            h("span", { className:"badge" }, "Routes = colored lines")
-          )
+          ...players.map(p=>h("g",{key:p.id},
+            h("circle",{cx:p.x,cy:p.y,r:12,fill:varPlayerFill(p.id)}),
+            h("text",{x:p.x,y:p.y+4,textAnchor:"middle",fill:varTextFill(),fontWeight:700,fontSize:10},p.id)
+          ))
         )
       );
     }
 
-    function varPlayerFill(id){
-      // Color skill guys lighter; OL/QB darker for contrast
-      if (["QB","RB","FB","X","Y","Z","H","TE"].includes(id)) return "#e9e9ee";
-      return "#c7cad1";
-    }
-    function varTextFill(id){
-      return "#0f0f12";
-    }
-    function varRouteColor(id){
-      // deterministic color per id
-      const map = { X:"#60a5fa", Y:"#34d399", Z:"#f472b6", H:"#fbbf24", TE:"#a78bfa", RB:"#f87171", FB:"#22c55e" };
-      return map[id] || "#fbd38d";
-    }
-
-    /** ----------------- App ----------------- */
+    /** ----------------- App (with Save + Quick Call) ----------------- */
     function App(){
-      const [callText, setCallText] = useState("");
+      const LS_KEY="pb_plays_v1";
+      const [callText,setCallText]=useState("");
+      const [quickCall,setQuickCall]=useState("");
+      const [plays,setPlays]=useState([]);
 
-      const formationName = useMemo(() => parseFormation(callText), [callText]);
-      const routesMap = useMemo(() => parseRoutes(callText), [callText]);
+      useEffect(()=>{
+        try{
+          const raw=localStorage.getItem(LS_KEY);
+          if(raw){ const arr=JSON.parse(raw); if(Array.isArray(arr)) setPlays(arr); }
+        }catch{}
+      },[]);
+      useEffect(()=>{
+        try{ localStorage.setItem(LS_KEY,JSON.stringify(plays)); }catch{}
+      },[plays]);
 
-      return h("div", { className:"container", style:{paddingTop:"18px", paddingBottom:"32px"} },
-        h("div", { className:"grid" },
+      const formationName=useMemo(()=>parseFormation(callText),[callText]);
+      const routesMap=useMemo(()=>parseRoutes(callText),[callText]);
+
+      function savePlay(){
+        const raw=callText.trim();
+        if(!raw) return;
+        const label=(quickCall.trim()||deriveQuick(raw)).slice(0,24);
+        const id=(crypto&&crypto.randomUUID)?crypto.randomUUID():String(Date.now());
+        setPlays(p=>[{id, quick:label, call:raw, createdAt:Date.now()}, ...p]);
+        setQuickCall("");
+      }
+      function deriveQuick(raw){
+        const t=raw.split(/\s+/).filter(Boolean);
+        return t.slice(0,2).join(" ") || "Quick";
+      }
+      function loadPlay(id){
+        const item=plays.find(x=>x.id===id);
+        if(!item) return;
+        setCallText(item.call);
+        setQuickCall(item.quick);
+        // scroll to top preview
+        window.scrollTo({top:0,behavior:"smooth"});
+      }
+      function deletePlay(id){
+        setPlays(p=>p.filter(x=>x.id!==id));
+      }
+      function clearEditor(){
+        setCallText(""); setQuickCall("");
+      }
+
+      return h("div",{className:"container",style:{paddingTop:"18px",paddingBottom:"32px"}},
+        h("div",{className:"grid"},
           // Live Preview
-          h("div", { className:"col-12" },
-            h("div", { className:"card" },
-              h("div", { className:"header" },
-                h("div", { style:{fontWeight:600} }, "Live Formation + Routes"),
-                h("div", { className:"muted" }, "Try: trips right, bunch left, empty, pistol, i right, 2x2")
+          h("div",{className:"col-12"},
+            h("div",{className:"card"},
+              h("div",{className:"header"},
+                h("div",{style:{fontWeight:600}},"Live Formation + Routes"),
+                h("div",{className:"muted"},"Try: trips right, bunch left, empty, pistol, i right, 2x2")
               ),
-              h("div", { className:"body" },
-                h(Field, { formationName, routesMap })
+              h("div",{className:"body"}, h(Field,{formationName, routesMap}))
+            )
+          ),
+
+          // Play Call + Quick Call + Actions
+          h("div",{className:"col-12"},
+            h("div",{className:"card"},
+              h("div",{className:"body"},
+                h("label",{htmlFor:"play-call",style:{display:"block",fontWeight:600,marginBottom:8}},"Play call"),
+                h("textarea",{
+                  id:"play-call", value:callText, onChange:e=>setCallText(e.target.value),
+                  placeholder:"trips right — X post 12, Y go, Z in 5, RB swing, TE sit 5", rows:4
+                }),
+                h("div",{style:{height:10}}),
+                h("label",{htmlFor:"quick-call",style:{display:"block",fontWeight:600,marginBottom:8}},"Quick Call (1–2 words)"),
+                h("input",{
+                  id:"quick-call", type:"text", value:quickCall, onChange:e=>setQuickCall(e.target.value),
+                  placeholder:"e.g., Texas, Smash, Flood"
+                }),
+                h("div",{style:{marginTop:10,display:"flex",justifyContent:"space-between",alignItems:"center"}},
+                  h("div",{className:"muted"},"Press ", h("span",{className:"kbd"},"Ctrl/⌘"), "+", h("span",{className:"kbd"},"Enter"), " to save quickly"),
+                  h("div",{className:"actions"},
+                    h("button",{className:"btn",onClick:clearEditor},"Clear"),
+                    h("button",{className:"btn primary",onClick:savePlay},"Save Play")
+                  )
+                )
               )
             )
           ),
-          // Input
-          h("div", { className:"col-12" },
-            h("div", { className:"card" },
-              h("div", { className:"body" },
-                h("label", { htmlFor:"play-call", style:{display:"block",fontWeight:600,marginBottom:8} }, "Play call"),
-                h("textarea", {
-                  id:"play-call",
-                  value:callText,
-                  onChange:e=>setCallText(e.target.value),
-                  placeholder:"Examples: \ntrips right — X post 12, Y go, Z in 5, RB swing, TE sit 5\nbunch left — Z corner 10, Y drag 5, H flat 3, RB wheel 20",
-                  rows:4
-                }),
-                h("div", { style:{marginTop:10, display:"flex", justifyContent:"space-between", alignItems:"center"} },
-                  h("div", { className:"muted" }, "Define routes like: X post 12, Y go, Z in 5, RB swing"),
-                  h("div", null,
-                    h("button", { className:"btn", onClick:()=>setCallText("") }, "Clear")
-                  )
-                )
+
+          // Saved Plays
+          h("div",{className:"col-12"},
+            h("div",{className:"card"},
+              h("div",{className:"header"},
+                h("div",{style:{fontWeight:600}},"Saved Plays"),
+                h("div",{className:"muted"}, `${plays.length} ${plays.length===1?"play":"plays"}`)
+              ),
+              h("div",{className:"body"},
+                plays.length===0
+                  ? h("div",{className:"muted"},"No saved plays yet.")
+                  : h("div",{className:"saved-grid"},
+                      ...plays.map(p=>{
+                        const f=parseFormation(p.call);
+                        const r=parseRoutes(p.call);
+                        return h("div",{key:p.id,className:"saved-card"},
+                          h("div",{className:"saved-head"},
+                            h("div",null,
+                              h("div",{className:"saved-name"}, p.quick),
+                              h("div",{className:"muted"}, `${f} • ${new Date(p.createdAt).toLocaleString()}`)
+                            ),
+                            h("div",{className:"actions"},
+                              h("button",{className:"btn small",onClick:()=>loadPlay(p.id)},"Load"),
+                              h("button",{className:"btn small",onClick:()=>deletePlay(p.id)},"Delete")
+                            )
+                          ),
+                          h("div",{style:{padding:"10px 12px"}},
+                            h(Field,{formationName:f, routesMap:r})
+                          )
+                        );
+                      })
+                    )
               )
             )
           )
